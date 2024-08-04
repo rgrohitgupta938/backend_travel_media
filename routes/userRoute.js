@@ -20,7 +20,6 @@ const storage = multer.diskStorage({
     console.log(req.body, "hi");
     cb(
       null,
-
       req.body.username +
         "-" +
         new Date().toISOString().replace(/:/g, "-") +
@@ -47,6 +46,12 @@ const upload = multer({
 
 console.log("Initializing userRoutes");
 
+// Check if username or email already exists
+const checkUserExists = async (username, email) => {
+  const userByEmail = await User.findOne({ email });
+  const userByUsername = await User.findOne({ username });
+  return { userByEmail, userByUsername };
+};
 
 router.get("/:userId", async (req, res) => {
   const { userId } = req.params;
@@ -70,18 +75,27 @@ router.post("/register", upload.single("userImage"), async (req, res) => {
   console.log("Request body:", req.body, "Uploaded file:", req.file);
   const userImagePath = req.file ? req.file.path.replace(/\\/g, "/") : null;
 
+  const { username, email, password } = req.body;
   try {
-    const find = await User.findOne({ email: req.body.email });
-    if (find) {
-      return res.status(400).json({ message: "User already exist" });
+    const { userByEmail, userByUsername } = await checkUserExists(
+      username,
+      email
+    );
+
+    if (userByEmail) {
+      return res.status(400).json({ message: "Email already exists" });
     }
+    if (userByUsername) {
+      return res.status(400).json({ message: "Username already exists" });
+    }
+
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(req.body.password, salt);
+    const passwordHash = await bcrypt.hash(password, salt);
     const user = new User({
-      username: req.body.username,
+      username,
       name: req.body.name,
-      email: req.body.email,
-      passwordHash: passwordHash,
+      email,
+      passwordHash,
       userImage: userImagePath,
     });
     console.log("User object to be saved:", user);
@@ -110,7 +124,7 @@ router.post("/login", async (req, res) => {
     });
     res.status(200).json({ token, userId: userExist._id });
   } catch (error) {
-    res.status(500).json({ message: "Error loging user" });
+    res.status(500).json({ message: "Error logging in user" });
   }
 });
 
@@ -119,29 +133,41 @@ router.put("/:userId", upload.single("userImage"), async (req, res) => {
   console.log("Handling PUT request to update user with ID:", userId);
   const userImagePath = req.file ? req.file.path.replace(/\\/g, "/") : null;
   try {
-    const user = await User.findById(id);
-    const imagePath = user.userImage;
-    if (user) {
-      const updatedUser = await User.findByIdAndUpdate(
-        id,
-        { ...req.body, userImage: userImagePath },
-        {
-          new: true,
-          runValidators: true,
-        }
-      );
-      res.json(updatedUser);
-      console.log("Updated user:", updatedUser);
-      fs.unlink(path.resolve(imagePath), (err) => {
-        if (err) {
-          console.log("Error Updating Image", err);
-        } else {
-          console.log("Image Updated");
-        }
-      });
-    } else {
-      res.status(404).send("User not found");
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).send("User not found");
     }
+
+    const { username, email } = req.body;
+    const { userByEmail, userByUsername } = await checkUserExists(
+      username,
+      email
+    );
+
+    if (userByEmail && userByEmail._id.toString() !== userId) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+    if (userByUsername && userByUsername._id.toString() !== userId) {
+      return res.status(400).json({ message: "Username already exists" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { ...req.body, userImage: userImagePath },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+    res.json(updatedUser);
+    console.log("Updated user:", updatedUser);
+    fs.unlink(path.resolve(user.userImage), (err) => {
+      if (err) {
+        console.log("Error Updating Image", err);
+      } else {
+        console.log("Image Updated");
+      }
+    });
   } catch (error) {
     console.error("Error updating user:", error);
     res.status(400).json({ message: "Error updating user" });
@@ -153,21 +179,20 @@ router.delete("/:id", async (req, res) => {
   console.log("Handling DELETE request for user with ID:", id);
   try {
     const user = await User.findById(id);
-    const imagePath = user.userImage;
-    if (user) {
-      const deletedUser = await User.findByIdAndDelete(id);
-      res.send("User deleted successfully");
-      console.log("Deleted user:", deletedUser);
-      fs.unlink(path.resolve(imagePath), (err) => {
-        if (err) {
-          console.log("Error Deleting Image", err);
-        } else {
-          console.log("Image Deleted", imagePath);
-        }
-      });
-    } else {
-      res.status(404).send("User not found");
+    if (!user) {
+      return res.status(404).send("User not found");
     }
+
+    const deletedUser = await User.findByIdAndDelete(id);
+    res.send("User deleted successfully");
+    console.log("Deleted user:", deletedUser);
+    fs.unlink(path.resolve(user.userImage), (err) => {
+      if (err) {
+        console.log("Error Deleting Image", err);
+      } else {
+        console.log("Image Deleted", user.userImage);
+      }
+    });
   } catch (error) {
     console.error("Error deleting user:", error);
     res.status(400).json({ message: "Error deleting user" });

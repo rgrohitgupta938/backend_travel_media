@@ -11,6 +11,7 @@ const authMiddleWare = (req, res, next) => {
   if (!token) {
     return res.status(401).json({ message: "No token,Authorization failed" });
   }
+  console.log(token);
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     console.log(decoded);

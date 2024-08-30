@@ -66,7 +66,8 @@ router.post(
       console.log(updatedPost);
       res.status(201).json(updatedPost);
     } catch (error) {
-      console.log(error);
+      console.log(error, error.content, error._message, "post mesg");
+      res.sendStatus(400).json({ message: error._message });
     }
   }
 );

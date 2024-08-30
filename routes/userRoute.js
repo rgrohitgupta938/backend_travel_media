@@ -7,6 +7,7 @@ const path = require("path");
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const bcrypt = require("bcrypt");
+const authMiddleWare = require("../middleware/authMiddleWare");
 
 dotenv.config();
 
@@ -53,7 +54,7 @@ const checkUserExists = async (username, email) => {
   return { userByEmail, userByUsername };
 };
 
-router.get("/:userId", async (req, res) => {
+router.get("/:userId", authMiddleWare, async (req, res) => {
   const { userId } = req.params;
   console.log("Handling GET request for user with ID:", userId);
   try {
